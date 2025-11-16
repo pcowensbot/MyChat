@@ -641,7 +641,7 @@ async function deriveKeyFromPassword(password) {
     false,
     ["deriveBits", "deriveKey"]
   );
-  
+
   return await window.crypto.subtle.deriveKey(
     {
       name: "PBKDF2",
@@ -655,6 +655,138 @@ async function deriveKeyFromPassword(password) {
     ["encrypt", "decrypt"]
   );
 }
+
+### Mandatory Key Backup System (CRITICAL SECURITY FEATURE)
+
+**Problem:** Private keys stored only in IndexedDB are lost when users clear browser data, making all encrypted messages permanently inaccessible.
+
+**Solution:** During registration, users MUST download a password-protected ZIP file containing their encrypted keys before completing account creation.
+
+#### Implementation:
+
+```javascript
+// 1. After key generation, create encrypted backup
+import JSZip from 'jszip';
+
+async function createKeyBackup(publicKey, privateKey, password, username) {
+  const zip = new JSZip();
+
+  // Encrypt keys with AES-256-GCM (defense in depth)
+  const encryptedPrivateKey = await encryptKeyForBackup(privateKey, password);
+  const encryptedPublicKey = await encryptKeyForBackup(publicKey, password);
+
+  // Add encrypted keys to ZIP with metadata
+  zip.file("private_key.json", JSON.stringify({
+    type: "mychat_encrypted_private_key",
+    version: "1.0",
+    algorithm: "AES-256-GCM",
+    kdf: "PBKDF2-SHA256-100000",
+    encrypted: encryptedPrivateKey.encrypted,
+    iv: encryptedPrivateKey.iv,
+    salt: encryptedPrivateKey.salt,
+    created: new Date().toISOString()
+  }, null, 2));
+
+  zip.file("public_key.json", JSON.stringify({
+    type: "mychat_encrypted_public_key",
+    version: "1.0",
+    algorithm: "AES-256-GCM",
+    kdf: "PBKDF2-SHA256-100000",
+    encrypted: encryptedPublicKey.encrypted,
+    iv: encryptedPublicKey.iv,
+    salt: encryptedPublicKey.salt,
+    created: new Date().toISOString()
+  }, null, 2));
+
+  // Add README with instructions
+  zip.file("README.txt", generateKeyBackupReadme(username));
+
+  // Generate password-protected ZIP
+  const zipBlob = await zip.generateAsync({
+    type: "blob",
+    compression: "DEFLATE",
+    compressionOptions: { level: 9 },
+    encryptStrength: 3, // AES-256 ZIP encryption
+    password: password
+  });
+
+  return zipBlob;
+}
+
+// 2. Trigger download
+function downloadKeyBackup(zipBlob, username) {
+  const url = URL.createObjectURL(zipBlob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `mychat-keys-${username}-${Date.now()}.zip`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+```
+
+#### Registration Flow (Updated):
+
+1. User fills registration form (username, email, password)
+2. Client generates RSA-4096 key pair
+3. Client creates encrypted key backup ZIP
+4. **Client triggers key download and waits for user confirmation**
+5. **User MUST confirm they've saved the keys before proceeding**
+6. Client stores encrypted keys in IndexedDB
+7. Client sends public key to server
+8. Server creates account and returns auth token
+
+#### Key Restore Flow:
+
+Users can restore their keys from the backup ZIP file:
+
+```javascript
+// Import keys from backup
+async function restoreKeysFromBackup(zipFile, password) {
+  const zip = await JSZip.loadAsync(zipFile, { password: password });
+
+  // Read encrypted key files
+  const privateKeyData = JSON.parse(await zip.file("private_key.json").async("string"));
+  const publicKeyData = JSON.parse(await zip.file("public_key.json").async("string"));
+
+  // Decrypt keys
+  const privateKey = await decryptKeyFromBackup(privateKeyData, password);
+  const publicKey = await decryptKeyFromBackup(publicKeyData, password);
+
+  // Store in IndexedDB
+  await storeEncryptedPrivateKey(privateKey, password);
+  await storePublicKey(publicKey);
+
+  return { publicKey, privateKey };
+}
+```
+
+#### Security Layers:
+
+1. **Layer 1:** Keys encrypted with AES-256-GCM using PBKDF2-derived password key
+2. **Layer 2:** ZIP file password-protected (AES-256 ZIP encryption)
+3. **Layer 3:** User must keep password secret (same as account password)
+
+#### User Experience:
+
+**During Registration:**
+- Clear warning about importance of key backup
+- Visual confirmation that download completed
+- Checkbox: "I confirm I have saved my encryption keys securely"
+- Cannot proceed without downloading and confirming
+
+**During Key Restore:**
+- Simple file upload interface
+- Password entry
+- Automatic key restoration to browser
+- Validation of backup file integrity
+
+#### Files Created:
+
+- `frontend/src/lib/crypto/keyExport.js` - Key backup creation
+- `frontend/src/lib/crypto/keyImport.js` - Key restoration
+- `frontend/src/components/auth/RegisterForm.jsx` - Registration with mandatory download
+- `frontend/src/components/auth/KeyRestoreForm.jsx` - Key restoration UI
+
 Message Encryption (1-on-1)
 javascript// Encrypt message for recipient
 async function encryptMessage(messageText, recipientPublicKey) {
