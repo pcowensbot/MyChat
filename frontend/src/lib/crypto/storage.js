@@ -1,15 +1,17 @@
 /**
- * Secure storage for encryption keys using IndexedDB
+ * IndexedDB Storage for Encrypted Keys
+ * Provides secure local storage for encrypted private keys
  */
 
-const DB_NAME = 'MyChatKeys';
+const DB_NAME = 'MyChatDB';
 const DB_VERSION = 1;
 const STORE_NAME = 'keys';
 
 /**
- * Open IndexedDB database
+ * Initialize IndexedDB
+ * @returns {Promise<IDBDatabase>}
  */
-function openDB() {
+function openDatabase() {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
 
@@ -26,97 +28,304 @@ function openDB() {
 }
 
 /**
- * Store encrypted private key
+ * Encrypts and stores a private key in IndexedDB
+ * @param {JsonWebKey} privateKeyJWK - Private key to store
+ * @param {string} password - Password to encrypt the key
+ * @returns {Promise<void>}
  */
-export async function storePrivateKey(encryptedKey) {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
+export async function storeEncryptedPrivateKey(privateKeyJWK, password) {
+  try {
+    // Derive encryption key from password
+    const { key: passwordKey, salt } = await deriveKeyFromPassword(password);
+
+    // Generate IV for AES-GCM
+    const iv = window.crypto.getRandomValues(new Uint8Array(12));
+
+    // Encrypt the private key
+    const encryptedKey = await window.crypto.subtle.encrypt(
+      { name: "AES-GCM", iv: iv },
+      passwordKey,
+      new TextEncoder().encode(JSON.stringify(privateKeyJWK))
+    );
+
+    // Store in IndexedDB
+    const db = await openDatabase();
     const transaction = db.transaction([STORE_NAME], 'readwrite');
     const store = transaction.objectStore(STORE_NAME);
-    const request = store.put(encryptedKey, 'private_key');
 
-    request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error);
-  });
+    const data = {
+      encrypted: arrayBufferToBase64(encryptedKey),
+      iv: arrayBufferToBase64(iv),
+      salt: arrayBufferToBase64(salt),
+      timestamp: Date.now()
+    };
+
+    await new Promise((resolve, reject) => {
+      const request = store.put(data, 'encrypted_private_key');
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+
+    db.close();
+  } catch (error) {
+    console.error("Failed to store encrypted private key:", error);
+    throw new Error("Key storage failed: " + error.message);
+  }
 }
 
 /**
- * Retrieve encrypted private key
+ * Retrieves and decrypts the private key from IndexedDB
+ * @param {string} password - Password to decrypt the key
+ * @returns {Promise<JsonWebKey|null>} Decrypted private key or null if not found
  */
-export async function getPrivateKey() {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
+export async function retrievePrivateKey(password) {
+  try {
+    const db = await openDatabase();
     const transaction = db.transaction([STORE_NAME], 'readonly');
     const store = transaction.objectStore(STORE_NAME);
-    const request = store.get('private_key');
 
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
+    const data = await new Promise((resolve, reject) => {
+      const request = store.get('encrypted_private_key');
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+
+    db.close();
+
+    if (!data) {
+      return null;
+    }
+
+    // Derive decryption key from password
+    const salt = base64ToArrayBuffer(data.salt);
+    const { key: passwordKey } = await deriveKeyFromPassword(password, new Uint8Array(salt));
+
+    // Decrypt the private key
+    const iv = base64ToArrayBuffer(data.iv);
+    const encryptedData = base64ToArrayBuffer(data.encrypted);
+
+    const decryptedKey = await window.crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: new Uint8Array(iv) },
+      passwordKey,
+      encryptedData
+    );
+
+    const privateKeyJWK = JSON.parse(new TextDecoder().decode(decryptedKey));
+    return privateKeyJWK;
+
+  } catch (error) {
+    console.error("Failed to retrieve private key:", error);
+    // Wrong password will throw here
+    throw new Error("Key retrieval failed: " + error.message);
+  }
 }
 
 /**
- * Store public key
+ * Stores the public key in IndexedDB (unencrypted, for quick access)
+ * @param {JsonWebKey} publicKeyJWK - Public key to store
+ * @returns {Promise<void>}
  */
-export async function storePublicKey(publicKey) {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
+export async function storePublicKey(publicKeyJWK) {
+  try {
+    const db = await openDatabase();
     const transaction = db.transaction([STORE_NAME], 'readwrite');
     const store = transaction.objectStore(STORE_NAME);
-    const request = store.put(publicKey, 'public_key');
 
-    request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error);
-  });
+    const data = {
+      publicKey: publicKeyJWK,
+      timestamp: Date.now()
+    };
+
+    await new Promise((resolve, reject) => {
+      const request = store.put(data, 'public_key');
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+
+    db.close();
+  } catch (error) {
+    console.error("Failed to store public key:", error);
+    throw new Error("Public key storage failed: " + error.message);
+  }
 }
 
 /**
- * Retrieve public key
+ * Retrieves the public key from IndexedDB
+ * @returns {Promise<JsonWebKey|null>}
  */
-export async function getPublicKey() {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
+export async function retrievePublicKey() {
+  try {
+    const db = await openDatabase();
     const transaction = db.transaction([STORE_NAME], 'readonly');
     const store = transaction.objectStore(STORE_NAME);
-    const request = store.get('public_key');
 
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
+    const data = await new Promise((resolve, reject) => {
+      const request = store.get('public_key');
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+
+    db.close();
+
+    return data ? data.publicKey : null;
+  } catch (error) {
+    console.error("Failed to retrieve public key:", error);
+    throw new Error("Public key retrieval failed: " + error.message);
+  }
 }
 
 /**
- * Clear all stored keys
+ * Checks if keys exist in IndexedDB
+ * @returns {Promise<boolean>}
  */
-export async function clearKeys() {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
+export async function hasStoredKeys() {
+  try {
+    const db = await openDatabase();
+    const transaction = db.transaction([STORE_NAME], 'readonly');
+    const store = transaction.objectStore(STORE_NAME);
+
+    const hasPrivateKey = await new Promise((resolve) => {
+      const request = store.get('encrypted_private_key');
+      request.onsuccess = () => resolve(!!request.result);
+      request.onerror = () => resolve(false);
+    });
+
+    db.close();
+
+    return hasPrivateKey;
+  } catch (error) {
+    console.error("Failed to check for stored keys:", error);
+    return false;
+  }
+}
+
+/**
+ * Clears all stored keys from IndexedDB
+ * @returns {Promise<void>}
+ */
+export async function clearStoredKeys() {
+  try {
+    const db = await openDatabase();
     const transaction = db.transaction([STORE_NAME], 'readwrite');
     const store = transaction.objectStore(STORE_NAME);
-    const request = store.clear();
 
-    request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error);
-  });
+    await Promise.all([
+      new Promise((resolve, reject) => {
+        const request = store.delete('encrypted_private_key');
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+      }),
+      new Promise((resolve, reject) => {
+        const request = store.delete('public_key');
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+      })
+    ]);
+
+    db.close();
+  } catch (error) {
+    console.error("Failed to clear stored keys:", error);
+    throw new Error("Key clearing failed: " + error.message);
+  }
 }
 
+// Import helper functions from keys.js
+async function deriveKeyFromPassword(password, salt = null) {
+  if (!salt) {
+    salt = window.crypto.getRandomValues(new Uint8Array(16));
+  }
+
+  const passwordKey = await window.crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(password),
+    "PBKDF2",
+    false,
+    ["deriveBits", "deriveKey"]
+  );
+
+  const derivedKey = await window.crypto.subtle.deriveKey(
+    {
+      name: "PBKDF2",
+      salt: salt,
+      iterations: 100000,
+      hash: "SHA-256"
+    },
+    passwordKey,
+    { name: "AES-GCM", length: 256 },
+    true,
+    ["encrypt", "decrypt"]
+  );
+
+  return { key: derivedKey, salt: salt };
+}
+
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return window.btoa(binary);
+}
+
+function base64ToArrayBuffer(base64) {
+  const binary = window.atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes.buffer;
+}
+
+// Legacy compatibility functions for existing code
+// These provide backward compatibility with the old storage API
+
 /**
- * Store session data (current password for this session)
+ * Alias for retrievePrivateKey - for backward compatibility
+ * @param {string} password - Password to decrypt the key
+ * @returns {Promise<JsonWebKey|null>}
  */
-export function storeSessionPassword(password) {
-  sessionStorage.setItem('mychat_session_password', password);
+export async function getPrivateKey(password) {
+  return retrievePrivateKey(password);
 }
 
 /**
- * Get session password
+ * Store private key - for backward compatibility
+ * @param {string} encryptedKeyData - Encrypted private key data (base64)
+ */
+export function storePrivateKey(encryptedKeyData) {
+  localStorage.setItem('encrypted_private_key', encryptedKeyData);
+}
+
+/**
+ * Get session password from sessionStorage
+ * @returns {string|null}
  */
 export function getSessionPassword() {
-  return sessionStorage.getItem('mychat_session_password');
+  return sessionStorage.getItem('session_password');
+}
+
+/**
+ * Store session password in sessionStorage
+ * @param {string} password
+ */
+export function storeSessionPassword(password) {
+  sessionStorage.setItem('session_password', password);
 }
 
 /**
  * Clear session password
  */
 export function clearSessionPassword() {
-  sessionStorage.removeItem('mychat_session_password');
+  sessionStorage.removeItem('session_password');
+}
+
+/**
+ * Alias for clearStoredKeys - for backward compatibility
+ */
+export async function clearKeys() {
+  clearSessionPassword();
+  localStorage.removeItem('encrypted_private_key');
+  localStorage.removeItem('public_key');
+  return clearStoredKeys();
 }
