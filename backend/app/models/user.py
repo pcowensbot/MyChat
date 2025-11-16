@@ -35,7 +35,7 @@ class User(Base):
     # Indexes
     __table_args__ = (
         Index('idx_username_domain', 'username', 'domain', unique=True),
-        Index('idx_last_seen', 'last_seen'),
+        Index('idx_user_last_seen', 'last_seen'),
         Index('idx_is_local', 'is_local'),
     )
 

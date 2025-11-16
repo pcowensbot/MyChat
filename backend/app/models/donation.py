@@ -35,7 +35,7 @@ class DonationWallet(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (
-        Index('idx_display_order', 'display_order'),
+        Index('idx_wallet_display_order', 'display_order'),
     )
 
     def __repr__(self):
@@ -71,7 +71,7 @@ class DonationAnalytics(Base):
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (
-        Index('idx_timestamp', 'timestamp'),
+        Index('idx_donation_timestamp', 'timestamp'),
     )
 
     def __repr__(self):

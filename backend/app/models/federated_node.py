@@ -37,7 +37,7 @@ class FederatedNode(Base):
 
     __table_args__ = (
         Index('idx_status', 'status'),
-        Index('idx_last_seen', 'last_seen'),
+        Index('idx_node_last_seen', 'last_seen'),
     )
 
     def __repr__(self):

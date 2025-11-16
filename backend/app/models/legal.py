@@ -44,8 +44,8 @@ class LegalRequest(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     __table_args__ = (
-        Index('idx_status', 'status'),
-        Index('idx_created_at', 'created_at'),
+        Index('idx_legal_status', 'status'),
+        Index('idx_legal_created_at', 'created_at'),
     )
 
     def __repr__(self):

@@ -45,7 +45,7 @@ class Message(Base):
         Index('idx_recipient_messages', 'recipient_id', 'created_at'),
         Index('idx_sender_messages', 'sender_id', 'created_at'),
         Index('idx_group_messages', 'group_id', 'created_at'),
-        Index('idx_created_at', 'created_at'),
+        Index('idx_message_created_at', 'created_at'),
     )
 
     def __repr__(self):
