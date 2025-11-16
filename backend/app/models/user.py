@@ -19,7 +19,7 @@ class User(Base):
     email = Column(String(255), nullable=True)  # Only for local users
     password_hash = Column(String(255), nullable=True)  # Only for local users
     public_key = Column(Text, nullable=False)  # PEM format RSA public key
-    public_key_fingerprint = Column(String(64), nullable=False)
+    public_key_fingerprint = Column(String(128), nullable=False)
     is_local = Column(Boolean, default=True)
     is_admin = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
