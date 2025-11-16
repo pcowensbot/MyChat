@@ -4,12 +4,14 @@
  */
 
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { generateKeyPair, generateFingerprint, jwkToPem } from '../../lib/crypto/keys.js';
 import { storeEncryptedPrivateKey, storePublicKey } from '../../lib/crypto/storage.js';
 import { exportKeysToZip, downloadKeysZip } from '../../lib/crypto/keyExport.js';
 import './RegisterForm.css';
 
 export default function RegisterForm() {
+  const navigate = useNavigate();
   const [formData, setFormData] = useState({
     username: '',
     email: '',
@@ -22,6 +24,7 @@ export default function RegisterForm() {
   const [error, setError] = useState('');
   const [keyData, setKeyData] = useState(null);
   const [keysDownloaded, setKeysDownloaded] = useState(false);
+  const [confirmationChecked, setConfirmationChecked] = useState(false);
 
   // Form validation
   const validateForm = () => {
@@ -167,7 +170,7 @@ export default function RegisterForm() {
       localStorage.setItem('username', formData.username);
 
       // Redirect to chat
-      window.location.href = '/chat';
+      navigate('/chat');
 
     } catch (err) {
       console.error('Registration failed:', err);
@@ -352,13 +355,8 @@ export default function RegisterForm() {
                     <input
                       type="checkbox"
                       id="confirm-saved"
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          document.getElementById('complete-registration').disabled = false;
-                        } else {
-                          document.getElementById('complete-registration').disabled = true;
-                        }
-                      }}
+                      checked={confirmationChecked}
+                      onChange={(e) => setConfirmationChecked(e.target.checked)}
                     />
                     <span>I confirm that I have downloaded and securely stored my encryption keys</span>
                   </label>
@@ -368,9 +366,9 @@ export default function RegisterForm() {
                   id="complete-registration"
                   onClick={handleCompleteRegistration}
                   className="btn btn-success btn-large"
-                  disabled={true}
+                  disabled={!confirmationChecked || loading}
                 >
-                  Complete Registration
+                  {loading ? 'Completing Registration...' : 'Complete Registration'}
                 </button>
               </div>
             )}
