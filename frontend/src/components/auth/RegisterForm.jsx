@@ -165,7 +165,7 @@ export default function RegisterForm() {
       console.log('Registration successful:', data);
 
       // Store auth token
-      localStorage.setItem('auth_token', data.token);
+      localStorage.setItem('auth_token', data.access_token);
       localStorage.setItem('user_id', data.user_id);
       localStorage.setItem('username', formData.username);
 
