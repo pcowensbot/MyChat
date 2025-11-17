@@ -65,3 +65,7 @@ data/uploads/*
 *.tmp
 *.temp
 .cache/
+
+# Claude Context System - Session logs are local only
+.claude/sessions/*.md
+!.claude/sessions/.gitkeep

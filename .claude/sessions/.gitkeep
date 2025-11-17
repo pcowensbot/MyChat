@@ -1,0 +1,25 @@
+# Session Logs Directory
+
+This directory contains detailed logs of development sessions.
+
+Session logs are **local only** and not committed to git (see .gitignore).
+
+## Naming Convention
+
+Session logs should follow this format:
+```
+YYYY-MM-DD-HHMM-brief-description.md
+```
+
+Examples:
+- `2025-11-17-1430-fix-registration-button.md`
+- `2025-11-18-0900-implement-websocket.md`
+- `2025-11-20-1600-database-migration.md`
+
+## Template
+
+Use the template at `.claude/templates/session-log.md` for consistency.
+
+## Retention
+
+Suggest archiving or deleting session logs older than 30 days to keep the directory manageable.
