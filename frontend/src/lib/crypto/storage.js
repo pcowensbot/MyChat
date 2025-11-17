@@ -115,6 +115,15 @@ export async function retrievePrivateKey(password) {
 
   } catch (error) {
     console.error("Failed to retrieve private key:", error);
+    console.error("Error type:", error.name);
+    console.error("Error details:", {
+      message: error.message,
+      stack: error.stack,
+      hasData: !!data,
+      hasSalt: !!data?.salt,
+      hasIV: !!data?.iv,
+      hasEncrypted: !!data?.encrypted
+    });
     // Wrong password will throw here
     throw new Error("Key retrieval failed: " + error.message);
   }

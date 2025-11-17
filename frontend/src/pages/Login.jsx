@@ -19,9 +19,15 @@ export default function Login() {
       // Store password for session (to decrypt private key)
       storeSessionPassword(formData.password)
 
+      console.log('=== Login Attempt ===')
+      console.log('Username:', formData.username)
+
       await login(formData.username, formData.password)
+
+      console.log('✓ Login successful, redirecting to /chat')
       navigate('/chat')
     } catch (error) {
+      console.error('!!! Login failed !!!', error)
       alert(error.message || 'Login failed')
     }
   }

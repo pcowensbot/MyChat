@@ -9,7 +9,6 @@ import {
   clearKeys,
   clearSessionPassword
 } from '../lib/crypto/storage';
-import { decryptPrivateKey } from '../lib/crypto/encryption';
 
 export const useAuthStore = create((set, get) => ({
   user: null,
@@ -32,16 +31,19 @@ export const useAuthStore = create((set, get) => ({
     try {
       const user = await auth.getCurrentUser();
 
-      // Try to load private key
-      const encryptedPrivateKey = await getPrivateKey();
+      // Try to retrieve private key using session password
+      // getPrivateKey() already decrypts the key using the password
       const sessionPassword = getSessionPassword();
-
       let privateKey = null;
-      if (encryptedPrivateKey && sessionPassword) {
+
+      if (sessionPassword) {
         try {
-          privateKey = await decryptPrivateKey(encryptedPrivateKey, sessionPassword);
+          console.log('Retrieving private key during initialization...');
+          privateKey = await getPrivateKey(sessionPassword);
+          console.log('✓ Private key retrieved during initialization');
         } catch (error) {
-          console.error('Failed to decrypt private key:', error);
+          console.error('Failed to retrieve private key during initialization:', error);
+          // This is not fatal - user can restore keys later
         }
       }
 
@@ -71,16 +73,17 @@ export const useAuthStore = create((set, get) => ({
     try {
       const data = await auth.login(username, password);
 
-      // Try to load and decrypt private key
-      const encryptedPrivateKey = await getPrivateKey();
+      // Try to retrieve and decrypt private key
+      // getPrivateKey() already decrypts the key using the password
       let privateKey = null;
 
-      if (encryptedPrivateKey) {
-        try {
-          privateKey = await decryptPrivateKey(encryptedPrivateKey, password);
-        } catch (error) {
-          console.error('Failed to decrypt private key:', error);
-        }
+      try {
+        console.log('Retrieving private key from IndexedDB...');
+        privateKey = await getPrivateKey(password);
+        console.log('✓ Private key retrieved successfully');
+      } catch (error) {
+        console.error('Failed to retrieve private key:', error);
+        // This is not fatal - user can restore keys later
       }
 
       set({

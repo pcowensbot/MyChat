@@ -6,7 +6,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { generateKeyPair, generateFingerprint, jwkToPem } from '../../lib/crypto/keys.js';
-import { storeEncryptedPrivateKey, storePublicKey } from '../../lib/crypto/storage.js';
+import { storeEncryptedPrivateKey, storePublicKey, storeSessionPassword } from '../../lib/crypto/storage.js';
 import { exportKeysToZip, downloadKeysZip } from '../../lib/crypto/keyExport.js';
 import './RegisterForm.css';
 
@@ -125,9 +125,21 @@ export default function RegisterForm() {
   };
 
   // Step 3: Confirm download and complete registration
-  const handleCompleteRegistration = async () => {
+  const handleCompleteRegistration = async (e) => {
+    console.log('=== Complete Registration Button Clicked ===');
+    console.log('Keys Downloaded:', keysDownloaded);
+    console.log('Confirmation Checked:', confirmationChecked);
+    console.log('Loading:', loading);
+
     if (!keysDownloaded) {
+      console.error('ERROR: Keys not downloaded');
       setError('You must download your keys before completing registration');
+      return;
+    }
+
+    if (!confirmationChecked) {
+      console.error('ERROR: Confirmation not checked');
+      setError('You must confirm that you have saved your keys');
       return;
     }
 
@@ -136,12 +148,17 @@ export default function RegisterForm() {
 
     try {
       // Store keys in IndexedDB (encrypted)
-      console.log('Storing encrypted keys in browser...');
+      console.log('Step 1/3: Storing encrypted keys in browser...');
       await storeEncryptedPrivateKey(keyData.privateKey, formData.password);
       await storePublicKey(keyData.publicKey);
+      console.log('✓ Keys stored successfully');
 
       // Register with server
-      console.log('Registering with server...');
+      console.log('Step 2/3: Registering with server...');
+      console.log('API Endpoint: /api/auth/register');
+      console.log('Username:', formData.username);
+      console.log('Email:', formData.email);
+
       const response = await fetch('/api/auth/register', {
         method: 'POST',
         headers: {
@@ -156,24 +173,35 @@ export default function RegisterForm() {
         })
       });
 
+      console.log('Response status:', response.status);
+
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.message || 'Registration failed');
+        console.error('Registration failed:', errorData);
+        throw new Error(errorData.detail || errorData.message || 'Registration failed');
       }
 
       const data = await response.json();
-      console.log('Registration successful:', data);
+      console.log('✓ Registration successful:', data);
 
-      // Store auth token
-      localStorage.setItem('auth_token', data.token);
+      // Store auth token (backend returns access_token, not token)
+      console.log('Step 3/3: Storing auth data...');
+      localStorage.setItem('auth_token', data.access_token);
       localStorage.setItem('user_id', data.user_id);
       localStorage.setItem('username', formData.username);
+      console.log('✓ Auth data stored');
+
+      // CRITICAL: Store session password so keys can be retrieved
+      console.log('Step 4/4: Storing session password for key retrieval...');
+      storeSessionPassword(formData.password);
+      console.log('✓ Session password stored');
 
       // Redirect to chat
+      console.log('✓ Redirecting to /chat');
       navigate('/chat');
 
     } catch (err) {
-      console.error('Registration failed:', err);
+      console.error('!!! Registration failed !!!', err);
       setError('Registration failed: ' + err.message);
       setLoading(false);
     }
